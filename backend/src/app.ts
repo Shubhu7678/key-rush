@@ -13,3 +13,5 @@ app.use('/api/auth', authRoutes);
 app.use('/api/races', raceRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use((request, response) => response.status(404).json({ message: `Route not found: ${request.path}` }));
+
+export default app;
