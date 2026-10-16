@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/gamezone.tsx","./src/api.ts","./src/lessons.test.ts","./src/lessons.ts","./src/main.tsx","./src/metrics.test.ts","./src/metrics.ts","./src/practicetext.test.ts","./src/practicetext.ts","./src/sentences.test.ts","./src/sentences.ts","./src/test-setup.ts","./src/timedtext.test.ts","./src/timedtext.ts","./src/vite-env.d.ts"],"version":"5.9.3"}
