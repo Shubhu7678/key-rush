@@ -108,7 +108,10 @@ export async function updateRaceProgress(raceId: string, playerId: string, typed
   return data as { race: RaceState };
 }
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+// const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+const API_BASE = import.meta.env.PROD
+  ? 'https://key-rush-d6t3.vercel.app/api'
+  : 'http://localhost:4000/api';
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
