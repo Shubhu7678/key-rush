@@ -26,7 +26,7 @@ KeyRush is a MERN typing-practice app with 25 guided lessons, timed/word-count/q
 4. To enable Google sign-in, create a **Web application** OAuth client in the [Google Cloud Console](https://console.cloud.google.com/auth/clients). Configure the OAuth consent screen and add the exact frontend origins (for local development, `http://localhost:5173`; add your deployed frontend origin too). Copy the client ID into `GOOGLE_CLIENT_ID` in `backend/.env`, and create `frontend/.env.local` containing:
 
    ```sh
-   VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id
+   GOOGLE_CLIENT_ID=your-google-oauth-client-id
    ```
 
    Use the same client ID in both places. It is a public identifier, not a client secret. Do not put a Google client secret in the frontend. Restart the dev servers after changing environment values. For deployment, configure `GOOGLE_CLIENT_ID` in the backend environment and `VITE_GOOGLE_CLIENT_ID` plus `VITE_API_URL` in the frontend build environment; `VITE_API_URL` should point to the backend API base URL (including `/api`).
