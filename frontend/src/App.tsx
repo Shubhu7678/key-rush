@@ -267,7 +267,7 @@ function AuthPage({ mode, theme, palette, onPaletteChange, onToggleTheme, onAuth
             </button>
           </form>
           <div className="auth-divider"><span>OR CONTINUE WITH</span></div>
-          {import.meta.env.GOOGLE_CLIENT_ID ? (
+          {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
             <div className={`google-signin ${googleLoading ? 'google-signin-loading' : ''}`}>
               <GoogleLogin
                 onSuccess={({ credential }) => void submitGoogleCredential(credential)}
