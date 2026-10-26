@@ -1,3 +1,5 @@
+import { getRandomSentence } from './sentences';
+
 export interface Lesson {
   id: string;
   number: number;
@@ -52,5 +54,46 @@ export const lessons: Lesson[] = curriculum.map(([title, keys, text], index) => 
   group: stageNames[index < 5 ? 0 : index < 10 ? 1 : index < 15 ? 2 : index < 20 ? 3 : index < 23 ? 4 : 5],
   text,
 }));
+
+export function buildLessonPracticeText(lesson: Lesson, previousText?: string, wordCount = 200) {
+  if (lesson.group === 'Stage 6: Real Typing') {
+    const previousSentence = previousText?.match(/^[\s\S]*?[.!?]/)?.[0];
+    const sourceText = previousText
+      ? getRandomSentence(undefined, previousSentence)
+      : lesson.text;
+    const sourceWords = sourceText.trim().split(/\s+/);
+    return Array.from({ length: wordCount }, (_, index) => sourceWords[index % sourceWords.length]).join(' ');
+  }
+
+  const seedWords = lesson.text.trim().split(/\s+/);
+  const previousFirstWord = previousText?.split(/\s+/, 1)[0];
+  if (seedWords.length === 1 && seedWords[0].length > 1) {
+    let offset = Math.floor(Math.random() * seedWords[0].length);
+    let variedPattern = seedWords[0].slice(offset) + seedWords[0].slice(0, offset);
+    if (variedPattern === previousFirstWord) {
+      offset = (offset + 1) % seedWords[0].length;
+      variedPattern = seedWords[0].slice(offset) + seedWords[0].slice(0, offset);
+    }
+    seedWords[0] = variedPattern;
+  }
+  const practiceWords = seedWords;
+  const words: string[] = [];
+
+  while (words.length < wordCount) {
+    const cycle = [...practiceWords];
+    for (let index = cycle.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [cycle[index], cycle[swapIndex]] = [cycle[swapIndex], cycle[index]];
+    }
+    words.push(...cycle);
+  }
+
+  const passage = words.slice(0, wordCount);
+  if (passage.join(' ') === previousText && passage.length > 1) {
+    const firstWord = passage.shift();
+    if (firstWord !== undefined) passage.push(firstWord);
+  }
+  return passage.join(' ');
+}
 
 export const stages = Array.from(new Set(lessons.map((lesson) => lesson.group)));

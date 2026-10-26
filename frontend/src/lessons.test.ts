@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lessons, stages } from './lessons';
+import { buildLessonPracticeText, lessons, stages } from './lessons';
 
 describe('beginner curriculum', () => {
   it('contains the requested 25 ordered tests across six stages', () => {
@@ -43,5 +43,47 @@ describe('beginner curriculum', () => {
       ['Short Sentences', 'I am learning to type faster.'],
       ['Final Beginner Test', 'The quick brown fox jumps over the lazy dog.'],
     ]);
+  });
+
+  it('gives each lesson a 200-word passage that only uses its practice pattern', () => {
+    for (const lesson of lessons) {
+      const passage = buildLessonPracticeText(lesson);
+      const sourceWords = lesson.text.trim().split(/\s+/);
+      const passageWords = passage.split(/\s+/);
+
+      expect(passageWords).toHaveLength(200);
+      if (sourceWords.length === 1 && sourceWords[0].length > 1) {
+        const allowedCharacters = new Set(sourceWords[0]);
+        expect([...passage.replace(/\s/g, '')].every((character) => allowedCharacters.has(character))).toBe(true);
+      } else {
+        const allowedWords = new Set(sourceWords);
+        expect(passageWords.every((word) => allowedWords.has(word))).toBe(true);
+      }
+    }
+  });
+
+  it('builds beginner word-count runs at each requested size', () => {
+    for (const wordCount of [10, 50, 100]) {
+      expect(buildLessonPracticeText(lessons[0], undefined, wordCount).split(/\s+/)).toHaveLength(wordCount);
+      expect(buildLessonPracticeText(lessons[24], undefined, wordCount).split(/\s+/)).toHaveLength(wordCount);
+    }
+  });
+
+  it('creates a different passage for the same lesson when requested', () => {
+    const lesson = lessons[0];
+    const current = buildLessonPracticeText(lesson);
+    expect(buildLessonPracticeText(lesson, current)).not.toBe(current);
+  });
+
+  it('keeps real-typing lessons readable and offers a different sentence', () => {
+    const lesson = lessons[24];
+    const firstPassage = buildLessonPracticeText(lesson);
+    const nextPassage = buildLessonPracticeText(lesson, firstPassage);
+
+    expect(firstPassage.split(/\s+/)).toHaveLength(200);
+    expect(firstPassage.startsWith(lesson.text)).toBe(true);
+    expect(nextPassage.split(/\s+/)).toHaveLength(200);
+    expect(nextPassage).not.toBe(firstPassage);
+    expect(nextPassage.match(/^[\s\S]*?[.!?]/)?.[0]).not.toBe(lesson.text);
   });
 });

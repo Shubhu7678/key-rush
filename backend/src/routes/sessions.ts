@@ -10,7 +10,7 @@ const sessionSchema = z.object({
   sentence: z.string().max(5000).optional().default(''),
   mode: z.enum(['lesson', 'time', 'words', 'quote', 'race']).default('lesson'),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
-  timeLimitSeconds: z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(60), z.literal(120)]).default(30),
+  timeLimitSeconds: z.union([z.literal(0), z.literal(10), z.literal(15), z.literal(30), z.literal(60), z.literal(120)]).default(30),
   wordCount: z.number().int().min(0).max(500).default(0),
   quoteLength: z.enum(['short', 'medium', 'long']).default('short'),
   includePunctuation: z.boolean().default(false),
@@ -19,6 +19,11 @@ const sessionSchema = z.object({
   accuracy: z.number().min(0).max(100),
   mistakes: z.number().int().min(0),
   durationSeconds: z.number().int().min(0).max(3600),
+  keyStats: z.array(z.object({
+    key: z.string().length(1),
+    attempts: z.number().int().min(1).max(5000),
+    mistakes: z.number().int().min(0).max(5000),
+  }).refine((stat) => stat.mistakes <= stat.attempts, { message: 'Key mistakes cannot exceed attempts.' })).max(80).optional().default([]),
 });
 
 router.use(authenticate);
@@ -39,7 +44,7 @@ router.get('/', async (request: AuthRequest, response) => {
   const sessions = await PracticeSession.find({ userId: request.userId })
     .sort({ createdAt: -1 })
     .limit(100)
-    .select('lessonId sentence mode difficulty timeLimitSeconds wordCount quoteLength includePunctuation includeNumbers wpm accuracy mistakes durationSeconds xpEarned createdAt');
+    .select('lessonId sentence mode difficulty timeLimitSeconds wordCount quoteLength includePunctuation includeNumbers wpm accuracy mistakes durationSeconds keyStats xpEarned createdAt');
   return response.json({ sessions });
 });
 
@@ -60,32 +65,45 @@ router.get('/stats', async (request: AuthRequest, response) => {
       },
     },
   ]);
-  const taskBreakdown = await PracticeSession.aggregate([
-    { $match: { userId } },
+  const modeRecords = await PracticeSession.aggregate([
+    { $match: { userId, $or: [{ mode: { $in: ['time', 'words'] } }, { mode: { $exists: false } }] } },
     {
       $group: {
         _id: {
-          lessonId: '$lessonId',
-          sentence: { $ifNull: ['$sentence', ''] },
           mode: { $ifNull: ['$mode', 'time'] },
-          difficulty: { $ifNull: ['$difficulty', 'medium'] },
-          timeLimitSeconds: { $ifNull: ['$timeLimitSeconds', 30] },
-          wordCount: { $ifNull: ['$wordCount', 0] },
-          quoteLength: { $ifNull: ['$quoteLength', 'short'] },
-          includePunctuation: { $ifNull: ['$includePunctuation', false] },
-          includeNumbers: { $ifNull: ['$includeNumbers', false] },
+          target: {
+            $cond: [
+              { $eq: [{ $ifNull: ['$mode', 'time'] }, 'time'] },
+              { $ifNull: ['$timeLimitSeconds', 30] },
+              { $ifNull: ['$wordCount', 0] },
+            ],
+          },
         },
-        gamesPlayed: { $sum: 1 },
-        totalDurationSeconds: { $sum: '$durationSeconds' },
+        runs: { $sum: 1 },
         averageWpm: { $avg: '$wpm' },
         bestWpm: { $max: '$wpm' },
         averageAccuracy: { $avg: '$accuracy' },
-        totalMistakes: { $sum: '$mistakes' },
       },
     },
-    { $sort: { gamesPlayed: -1, '_id.lessonId': 1 } },
+    { $sort: { '_id.mode': 1, '_id.target': 1 } },
   ]);
-  const completedLessons = await PracticeSession.distinct('lessonId', { userId: request.userId, lessonId: { $ne: 'sentence-mode' } });
+  const lessonProgress = await PracticeSession.aggregate([
+    { $match: { userId, lessonId: { $ne: 'sentence-mode' } } },
+    { $group: { _id: '$lessonId', bestWpm: { $max: '$wpm' } } },
+    { $sort: { _id: 1 } },
+  ]);
+  const keyStats = await PracticeSession.aggregate([
+    { $match: { userId, 'keyStats.0': { $exists: true } } },
+    { $unwind: '$keyStats' },
+    {
+      $group: {
+        _id: '$keyStats.key',
+        attempts: { $sum: '$keyStats.attempts' },
+        mistakes: { $sum: '$keyStats.mistakes' },
+      },
+    },
+    { $sort: { mistakes: -1, _id: 1 } },
+  ]);
   const activityDays = await PracticeSession.aggregate([
     { $match: { userId } },
     { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'UTC' } }, runs: { $sum: 1 } } },
@@ -131,23 +149,26 @@ router.get('/stats', async (request: AuthRequest, response) => {
       dailyGoal: 3,
       currentStreak,
       longestStreak,
-      lessonsCompleted: completedLessons.length,
-      taskBreakdown: taskBreakdown.map((task) => ({
-        lessonId: task._id.lessonId,
-        sentence: task._id.sentence,
-        mode: task._id.mode ?? 'lesson',
-        difficulty: task._id.difficulty ?? 'medium',
-        timeLimitSeconds: task._id.timeLimitSeconds ?? 0,
-        wordCount: task._id.wordCount ?? 0,
-        quoteLength: task._id.quoteLength ?? 'short',
-        includePunctuation: task._id.includePunctuation ?? false,
-        includeNumbers: task._id.includeNumbers ?? false,
-        gamesPlayed: task.gamesPlayed,
-        totalDurationSeconds: task.totalDurationSeconds,
-        averageWpm: Math.round(task.averageWpm * 10) / 10,
-        bestWpm: task.bestWpm,
-        averageAccuracy: Math.round(task.averageAccuracy * 10) / 10,
-        totalMistakes: task.totalMistakes,
+      lessonsCompleted: lessonProgress.length,
+      lessonProgress: lessonProgress.map((lesson: { _id: string; bestWpm: number }) => ({
+        lessonId: lesson._id,
+        bestWpm: lesson.bestWpm,
+      })),
+      modeRecords: modeRecords.map((record: { _id: { mode: 'time' | 'words'; target: number }; runs: number; averageWpm: number; bestWpm: number; averageAccuracy: number }) => ({
+        mode: record._id.mode,
+        target: record._id.target,
+        runs: record.runs,
+        averageWpm: Math.round(record.averageWpm * 10) / 10,
+        bestWpm: record.bestWpm,
+        averageAccuracy: Math.round(record.averageAccuracy * 10) / 10,
+      })),
+      activityDays: activityDays
+        .filter((day: { _id: string }) => day._id >= new Date(Date.now() - 364 * 86400000).toISOString().slice(0, 10))
+        .map((day: { _id: string; runs: number }) => ({ date: day._id, runs: day.runs })),
+      keyStats: keyStats.map((stat: { _id: string; attempts: number; mistakes: number }) => ({
+        key: stat._id,
+        attempts: stat.attempts,
+        mistakes: stat.mistakes,
       })),
     },
   });

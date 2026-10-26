@@ -1,4 +1,5 @@
 import type { Difficulty } from './timedText';
+import { sentenceBank } from './sentences';
 
 export type TypingMode = 'time' | 'words' | 'quote';
 export type QuoteLength = 'short' | 'medium' | 'long';
@@ -7,7 +8,7 @@ export interface PracticeTextOptions {
   lessonText: string;
   difficulty: Difficulty;
   mode: TypingMode;
-  timeLimitSeconds: 15 | 30 | 60 | 120;
+  timeLimitSeconds: 10 | 15 | 30 | 60 | 120;
   wordCount: number;
   quoteLength: QuoteLength;
   includePunctuation: boolean;
@@ -63,13 +64,18 @@ export function buildPracticeText(options: PracticeTextOptions) {
     return decorateWords(words, options.includePunctuation, options.includeNumbers).join(' ');
   }
 
-  const chunks: string[] = [];
-  let generated = '';
+  const sentencePool = Object.values(sentenceBank).flat().filter((sentence) => sentence !== options.lessonText);
+  const sentenceChunks = [options.lessonText];
+  let generatedWordCount = sourceWords.length;
   let cycle = 0;
-  while (generated.length < Math.max(4000, options.timeLimitSeconds * 40)) {
-    chunks.push(reorderWords(sourceWords, options.difficulty, cycle).join(' '));
-    generated = chunks.join(' ');
+  while (generatedWordCount < 1000) {
+    const sentence = sentencePool[cycle % sentencePool.length];
+    const words = sentence.trim().split(/\s+/).filter(Boolean);
+    sentenceChunks.push(reorderWords(words, options.difficulty, cycle).join(' '));
+    generatedWordCount += words.length;
     cycle += 1;
   }
-  return formatText(generated, options.includePunctuation, options.includeNumbers);
+  return sentenceChunks
+    .map((sentence) => formatText(sentence, options.includePunctuation, options.includeNumbers))
+    .join(' ');
 }

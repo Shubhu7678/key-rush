@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { ArrowLeft, ArrowRight, CircleHelp, Clock3, Crown, Flag, Flame, Keyboard, LoaderCircle, Medal, RotateCcw, Users, Zap } from 'lucide-react';
 import { getRace, joinRace, saveSession, updateRaceProgress, type RaceState } from './api';
 import { calculateMetrics } from './metrics';
+import { calculateKeyStats } from './keyStats';
 
 interface GameZoneProps {
   playerName: string;
@@ -82,6 +83,7 @@ export default function GameZone({ playerName, token, onExit, onRaceSaved }: Gam
       accuracy: metrics.accuracy,
       mistakes: ownRacer.mistakes,
       durationSeconds: race.startedAt ? Math.max(1, Math.floor((ownRacer.finishedAt - race.startedAt) / 1000)) : 0,
+      keyStats: calculateKeyStats(race.sentence, typedText),
     }).then(({ session }) => {
       setRaceXp(session.xpEarned ?? 0);
       setSaveNotice('Race saved to your stats.');

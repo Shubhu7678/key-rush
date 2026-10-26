@@ -21,6 +21,19 @@ describe('buildPracticeText', () => {
     }
   });
 
+  it('builds a long timed passage from varied sentences instead of repeating one prompt', () => {
+    const text = buildPracticeText({
+      ...defaults,
+      lessonText: sentenceBank.short[0],
+      mode: 'time',
+      includePunctuation: true,
+    });
+    const sentences = text.match(/[^.]+\./g) ?? [];
+
+    expect(text.split(/\s+/).length).toBeGreaterThanOrEqual(1000);
+    expect(new Set(sentences.slice(0, 24)).size).toBe(24);
+  });
+
   it('supports custom-sized word tasks within its supported range', () => {
     const text = buildPracticeText({ ...defaults, mode: 'words', wordCount: 37 });
     expect(text.split(/\s+/)).toHaveLength(37);

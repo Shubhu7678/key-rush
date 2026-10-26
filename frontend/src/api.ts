@@ -9,7 +9,7 @@ export interface PracticeResult {
   sentence?: string;
   mode: 'lesson' | 'time' | 'words' | 'quote' | 'race';
   difficulty: 'easy' | 'medium' | 'hard';
-  timeLimitSeconds: 0 | 15 | 30 | 60 | 120;
+  timeLimitSeconds: 0 | 10 | 15 | 30 | 60 | 120;
   wordCount: number;
   quoteLength: 'short' | 'medium' | 'long';
   includePunctuation: boolean;
@@ -18,6 +18,13 @@ export interface PracticeResult {
   accuracy: number;
   mistakes: number;
   durationSeconds: number;
+  keyStats?: KeyStat[];
+}
+
+export interface KeyStat {
+  key: string;
+  attempts: number;
+  mistakes: number;
 }
 
 export interface SavedSession extends PracticeResult {
@@ -39,25 +46,19 @@ export interface UserStats {
   currentStreak: number;
   longestStreak: number;
   lessonsCompleted: number;
-  taskBreakdown: TaskStats[];
+  lessonProgress: Array<{ lessonId: string; bestWpm: number }>;
+  modeRecords: ModeStats[];
+  activityDays: Array<{ date: string; runs: number }>;
+  keyStats: KeyStat[];
 }
 
-export interface TaskStats {
-  lessonId: string;
-  sentence: string;
-  mode: 'lesson' | 'time' | 'words' | 'quote' | 'race';
-  difficulty: 'easy' | 'medium' | 'hard';
-  timeLimitSeconds: number;
-  wordCount: number;
-  quoteLength: 'short' | 'medium' | 'long';
-  includePunctuation: boolean;
-  includeNumbers: boolean;
-  gamesPlayed: number;
-  totalDurationSeconds: number;
+export interface ModeStats {
+  mode: 'time' | 'words';
+  target: number;
+  runs: number;
   averageWpm: number;
   bestWpm: number;
   averageAccuracy: number;
-  totalMistakes: number;
 }
 
 export interface RaceRacer {
@@ -108,10 +109,9 @@ export async function updateRaceProgress(raceId: string, playerId: string, typed
   return data as { race: RaceState };
 }
 
-// const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
-const API_BASE = import.meta.env.PROD
+const API_BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD
   ? 'https://key-rush-d6t3.vercel.app/api'
-  : 'http://localhost:4000/api';
+  : 'http://localhost:4000/api');
 
 async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -138,6 +138,13 @@ export function signUp(name: string, email: string, password: string) {
   return request<{ token: string; user: Account }>('/auth/signup', {
     method: 'POST',
     body: JSON.stringify({ name, email, password }),
+  });
+}
+
+export function signInWithGoogle(credential: string) {
+  return request<{ token: string; user: Account }>('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
   });
 }
 

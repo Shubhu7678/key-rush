@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import {
   ArrowDownRight,
   ArrowLeft,
@@ -18,12 +19,14 @@ import {
   Keyboard,
   LogOut,
   Moon,
+  Palette,
   Quote,
   RotateCcw,
   Sun,
   Target,
   Type,
   Sparkles,
+  Shuffle,
   Trophy,
   UserRound,
   X,
@@ -35,24 +38,51 @@ import {
   getStats,
   saveSession,
   signIn,
+  signInWithGoogle,
   signUp,
   type Account,
   type SavedSession,
   type UserStats,
 } from './api';
-import { lessons } from './lessons';
+import { buildLessonPracticeText, lessons } from './lessons';
+import { buildActivityGrid, buildModeRecords, calculateKeyStats, recommendLessonForKey } from './keyStats';
 import { calculateMetrics } from './metrics';
 import { buildPracticeText, type QuoteLength, type TypingMode } from './practiceText';
 import { getRandomSentence } from './sentences';
 import GameZone from './GameZone';
 
 type Theme = 'light' | 'dark';
+const colorPalettes = [
+  { id: 'coral', label: 'Coral', color: '#e75f48' },
+  { id: 'ocean', label: 'Ocean', color: '#3868c9' },
+  { id: 'forest', label: 'Forest', color: '#27805d' },
+  { id: 'violet', label: 'Violet', color: '#7655c5' },
+  { id: 'amber', label: 'Amber', color: '#aa6810' },
+] as const;
+type ColorPalette = (typeof colorPalettes)[number]['id'];
 type AuthResult = { token: string; user: Account };
+
+function getTypingLineOffset(windowElement: HTMLDivElement | null, copyElement: HTMLDivElement | null) {
+  const currentCharacter = copyElement?.querySelector('.character-current') ?? copyElement?.lastElementChild;
+  if (!windowElement || !copyElement || !currentCharacter) return 0;
+
+  const lineHeight = Number.parseFloat(getComputedStyle(copyElement).lineHeight);
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return 0;
+
+  const currentLine = Math.round(
+    (currentCharacter.getBoundingClientRect().top - copyElement.getBoundingClientRect().top) / lineHeight,
+  );
+  return Math.max(0, currentLine - 2) * lineHeight;
+}
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() =>
     localStorage.getItem('keyrush-theme') === 'dark' ? 'dark' : 'light',
   );
+  const [palette, setPalette] = useState<ColorPalette>(() => {
+    const savedPalette = localStorage.getItem('keyrush-palette');
+    return colorPalettes.find(({ id }) => id === savedPalette)?.id ?? 'coral';
+  });
   const [token, setToken] = useState(() => localStorage.getItem('keyrush-token') ?? '');
   const [user, setUser] = useState<Account | null>(null);
   const [checkingAccount, setCheckingAccount] = useState(Boolean(token));
@@ -62,6 +92,11 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('keyrush-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.palette = palette;
+    localStorage.setItem('keyrush-palette', palette);
+  }, [palette]);
 
   useEffect(() => {
     if (!token) {
@@ -95,40 +130,47 @@ export default function App() {
     setTheme((current) => current === 'light' ? 'dark' : 'light');
   }
 
-  return (
+  const routes = (
     <Routes>
       <Route
         path="/login"
-        element={<AuthPage mode="login" theme={theme} onToggleTheme={toggleTheme} onAuth={completeSignIn} />}
+        element={<AuthPage mode="login" theme={theme} palette={palette} onPaletteChange={setPalette} onToggleTheme={toggleTheme} onAuth={completeSignIn} />}
       />
       <Route
         path="/signup"
-        element={<AuthPage mode="signup" theme={theme} onToggleTheme={toggleTheme} onAuth={completeSignIn} />}
+        element={<AuthPage mode="signup" theme={theme} palette={palette} onPaletteChange={setPalette} onToggleTheme={toggleTheme} onAuth={completeSignIn} />}
       />
       <Route
         path="*"
         element={checkingAccount ? <LoadingScreen /> : (
-          <PracticeApp user={user} token={token} onSignOut={signOut} theme={theme} onToggleTheme={toggleTheme} />
+          <PracticeApp user={user} token={token} onSignOut={signOut} theme={theme} palette={palette} onPaletteChange={setPalette} onToggleTheme={toggleTheme} />
         )}
       />
     </Routes>
   );
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  return googleClientId
+    ? <GoogleOAuthProvider clientId={googleClientId}>{routes}</GoogleOAuthProvider>
+    : routes;
 }
 
 interface AuthPageProps {
   mode: 'login' | 'signup';
   theme: Theme;
+  palette: ColorPalette;
+  onPaletteChange: (palette: ColorPalette) => void;
   onToggleTheme: () => void;
   onAuth: (result: AuthResult) => void;
 }
 
-function AuthPage({ mode, theme, onToggleTheme, onAuth }: AuthPageProps) {
+function AuthPage({ mode, theme, palette, onPaletteChange, onToggleTheme, onAuth }: AuthPageProps) {
   const isSignup = mode === 'signup';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const location = useLocation();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -144,6 +186,22 @@ function AuthPage({ mode, theme, onToggleTheme, onAuth }: AuthPageProps) {
       setError(reason instanceof Error ? reason.message : 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function submitGoogleCredential(credential?: string) {
+    if (!credential) {
+      setError('Google did not return a sign-in credential. Please try again.');
+      return;
+    }
+    setGoogleLoading(true);
+    setError('');
+    try {
+      onAuth(await signInWithGoogle(credential));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Google sign-in failed. Please try again.');
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -175,9 +233,12 @@ function AuthPage({ mode, theme, onToggleTheme, onAuth }: AuthPageProps) {
       <main className="auth-main">
         <div className="auth-main-top">
           <Link className="auth-back" to="/"><ArrowLeft size={16} /> Back to practice</Link>
-          <button className="icon-button theme-switch" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title="Change appearance">
-            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-          </button>
+          <div className="appearance-controls">
+            <ColorThemePicker palette={palette} onPaletteChange={onPaletteChange} />
+            <button className="icon-button theme-switch" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title="Change appearance">
+              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+          </div>
         </div>
         <div className="auth-form-wrap">
           <div className="auth-mobile-brand"><span className="brand-mark"><Keyboard size={18} /></span> keyrush<span className="brand-period">.</span></div>
@@ -205,6 +266,22 @@ function AuthPage({ mode, theme, onToggleTheme, onAuth }: AuthPageProps) {
               {!loading && <ArrowRight size={17} />}
             </button>
           </form>
+          <div className="auth-divider"><span>OR CONTINUE WITH</span></div>
+          {import.meta.env.VITE_GOOGLE_CLIENT_ID ? (
+            <div className={`google-signin ${googleLoading ? 'google-signin-loading' : ''}`}>
+              <GoogleLogin
+                onSuccess={({ credential }) => void submitGoogleCredential(credential)}
+                onError={() => setError('Google sign-in could not be completed. Please try again.')}
+                text="continue_with"
+                theme={theme === 'dark' ? 'filled_black' : 'outline'}
+                shape="rectangular"
+                size="large"
+                width={Math.min(390, window.innerWidth - 44)}
+              />
+            </div>
+          ) : (
+            <p className="google-signin-config">Google sign-in is available after an administrator configures the Google OAuth client.</p>
+          )}
           <p className="auth-toggle">
             {isSignup ? 'Already have an account?' : 'New to KeyRush?'}{' '}
             <Link to={isSignup ? '/login' : '/signup'} state={location.state}>{isSignup ? 'Sign in' : 'Create an account'}</Link>
@@ -222,24 +299,30 @@ interface PracticeAppProps {
   token: string;
   onSignOut: () => void;
   theme: Theme;
+  palette: ColorPalette;
+  onPaletteChange: (palette: ColorPalette) => void;
   onToggleTheme: () => void;
 }
 
-function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeAppProps) {
+function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, onToggleTheme }: PracticeAppProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState(lessons[0].id);
   const [typingMode, setTypingMode] = useState<TypingMode>('time');
+  const [beginnerPracticeMode, setBeginnerPracticeMode] = useState<'lesson' | 'time' | 'words'>('lesson');
+  const [beginnerWordCount, setBeginnerWordCount] = useState<10 | 50 | 100>(10);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
-  const [timeLimitSeconds, setTimeLimitSeconds] = useState<15 | 30 | 60 | 120>(30);
+  const [timeLimitSeconds, setTimeLimitSeconds] = useState<10 | 15 | 30 | 60 | 120>(30);
   const [wordPreset, setWordPreset] = useState('25');
   const [customWordCount, setCustomWordCount] = useState('25');
   const [quoteLength, setQuoteLength] = useState<QuoteLength>('short');
   const [currentSentence, setCurrentSentence] = useState(() => getRandomSentence());
+  const [lessonPrompt, setLessonPrompt] = useState(() => buildLessonPracticeText(lessons[0]));
   const [includePunctuation, setIncludePunctuation] = useState(false);
   const [includeNumbers, setIncludeNumbers] = useState(false);
   const [input, setInput] = useState('');
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [countdownEndsAt, setCountdownEndsAt] = useState<number | null>(null);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -249,6 +332,9 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
   const [saveMessage, setSaveMessage] = useState('');
   const [earnedXp, setEarnedXp] = useState<number | null>(null);
   const textInput = useRef<HTMLTextAreaElement>(null);
+  const typingWindow = useRef<HTMLDivElement>(null);
+  const typingCopy = useRef<HTMLDivElement>(null);
+  const [typingLineOffset, setTypingLineOffset] = useState(0);
   const didSave = useRef(false);
   const lesson = lessons.find((item) => item.id === selectedId) ?? lessons[0];
   const isStatsPage = location.pathname === '/stats';
@@ -267,9 +353,11 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
     quoteLength,
     includePunctuation,
     includeNumbers,
-  }) : lesson.text, [isModesPage, currentSentence, lesson.text, difficulty, typingMode, timeLimitSeconds, selectedWordCount, quoteLength, includePunctuation, includeNumbers]);
+  }) : beginnerPracticeMode === 'words'
+    ? buildLessonPracticeText(lesson, lessonPrompt, beginnerWordCount)
+    : lessonPrompt, [isModesPage, currentSentence, lessonPrompt, lesson, beginnerPracticeMode, beginnerWordCount, difficulty, typingMode, timeLimitSeconds, selectedWordCount, quoteLength, includePunctuation, includeNumbers]);
   const isComplete = finishedAt !== null;
-  const isTimedMode = isModesPage && typingMode === 'time';
+  const isTimedMode = isModesPage ? typingMode === 'time' : isLearningPage && beginnerPracticeMode === 'time';
   const elapsedSeconds = startedAt === null
     ? 0
     : Math.max(0, Math.floor(((finishedAt ?? now) - startedAt) / 1000));
@@ -277,33 +365,64 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
   const groups = Array.from(new Set(lessons.map((item) => item.group)));
   const stageNumber = groups.indexOf(lesson.group) + 1;
   const remainingSeconds = isTimedMode ? Math.max(0, timeLimitSeconds - elapsedSeconds) : elapsedSeconds;
+  const countdownSeconds = countdownEndsAt === null ? null : Math.max(0, Math.ceil((countdownEndsAt - now) / 1000));
   const [openStage, setOpenStage] = useState(lesson.group);
-  const completedLessonIds = new Set((stats?.taskBreakdown ?? []).map((task) => task.lessonId).filter((lessonId) => lessonId !== 'sentence-mode'));
-  const lessonBests = new Map<string, number>();
-  for (const task of stats?.taskBreakdown ?? []) {
-    lessonBests.set(task.lessonId, Math.max(lessonBests.get(task.lessonId) ?? 0, task.bestWpm));
-  }
+  const completedLessonIds = new Set((stats?.lessonProgress ?? []).map(({ lessonId }) => lessonId));
+  const lessonBests = new Map((stats?.lessonProgress ?? []).map(({ lessonId, bestWpm }) => [lessonId, bestWpm]));
   const nextChallenge = lessons.find((item) => !completedLessonIds.has(item.id)) ?? lessons[lessons.length - 1];
 
+  useLayoutEffect(() => {
+    setTypingLineOffset(getTypingLineOffset(typingWindow.current, typingCopy.current));
+  }, [input, runText]);
+
   useEffect(() => {
-    if (!startedAt || finishedAt) return;
+    const windowElement = typingWindow.current;
+    if (!windowElement) return;
+    const observer = new ResizeObserver(() => {
+      setTypingLineOffset(getTypingLineOffset(windowElement, typingCopy.current));
+    });
+    observer.observe(windowElement);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if ((!startedAt && countdownEndsAt === null) || finishedAt) return;
     const timer = window.setInterval(() => {
       const currentTime = Date.now();
       setNow(currentTime);
-      if (isTimedMode && currentTime - startedAt >= timeLimitSeconds * 1000) {
+      if (countdownEndsAt !== null && currentTime >= countdownEndsAt) {
+        setStartedAt(countdownEndsAt);
+        setCountdownEndsAt(null);
+      } else if (startedAt !== null && isTimedMode && currentTime - startedAt >= timeLimitSeconds * 1000) {
         setFinishedAt(startedAt + timeLimitSeconds * 1000);
       }
     }, 100);
     return () => window.clearInterval(timer);
-  }, [startedAt, finishedAt, timeLimitSeconds, isTimedMode]);
+  }, [startedAt, countdownEndsAt, finishedAt, timeLimitSeconds, isTimedMode]);
+
+  useEffect(() => {
+    if (isModesPage && startedAt !== null) {
+      textInput.current?.focus({ preventScroll: true });
+    }
+  }, [isModesPage, startedAt]);
 
   useEffect(() => {
     if (!token) {
       setSessions([]);
+      return;
+    }
+    if (isStatsPage) {
+      setSessions([]);
+    } else {
+      getSessions(token).then(({ sessions: saved }) => setSessions(saved)).catch(() => setSessions([]));
+    }
+  }, [token, isStatsPage]);
+
+  useEffect(() => {
+    if (!token) {
       setStats(null);
       return;
     }
-    getSessions(token).then(({ sessions: saved }) => setSessions(saved)).catch(() => setSessions([]));
     getStats(token).then(({ stats: accountStats }) => setStats(accountStats)).catch(() => setStats(null));
   }, [token]);
 
@@ -314,10 +433,10 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
     saveSession(token, {
       lessonId: isModesPage ? 'sentence-mode' : lesson.id,
       sentence: isModesPage ? currentSentence : '',
-      mode: isModesPage ? typingMode : 'lesson',
+      mode: isModesPage ? typingMode : beginnerPracticeMode,
       difficulty: isModesPage ? difficulty : 'easy',
       timeLimitSeconds: isTimedMode ? timeLimitSeconds : 0,
-      wordCount: isModesPage && typingMode === 'words' ? selectedWordCount : 0,
+      wordCount: isModesPage && typingMode === 'words' ? selectedWordCount : !isModesPage && beginnerPracticeMode === 'words' ? beginnerWordCount : 0,
       quoteLength: isModesPage && typingMode === 'quote' ? quoteLength : 'short',
       includePunctuation: isModesPage && includePunctuation,
       includeNumbers: isModesPage && includeNumbers,
@@ -325,28 +444,38 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
       accuracy: metrics.accuracy,
       mistakes: metrics.mistakes,
       durationSeconds: elapsedSeconds,
+      keyStats: calculateKeyStats(runText, input),
     }).then(({ session }) => {
       setSessions((current) => [session, ...current].slice(0, 20));
       setEarnedXp(session.xpEarned ?? 0);
       getStats(token).then(({ stats: accountStats }) => setStats(accountStats)).catch(() => undefined);
       setSaveMessage('Result saved to your practice history.');
     }).catch(() => setSaveMessage('Result complete. It could not be saved right now.'));
-  }, [isComplete, token, lesson.id, currentSentence, isModesPage, typingMode, difficulty, timeLimitSeconds, selectedWordCount, quoteLength, includePunctuation, includeNumbers, metrics.wpm, metrics.accuracy, metrics.mistakes, elapsedSeconds, isTimedMode]);
+  }, [isComplete, token, lesson.id, currentSentence, isModesPage, typingMode, beginnerPracticeMode, beginnerWordCount, difficulty, timeLimitSeconds, selectedWordCount, quoteLength, includePunctuation, includeNumbers, metrics.wpm, metrics.accuracy, metrics.mistakes, elapsedSeconds, isTimedMode]);
 
   function resetPractice(nextLessonId = selectedId, shouldFocus = true, closePanel = true) {
     setSelectedId(nextLessonId);
     setInput('');
     setStartedAt(null);
+    setCountdownEndsAt(null);
     setFinishedAt(null);
     setNow(Date.now());
     setSaveMessage('');
     setEarnedXp(null);
     didSave.current = false;
     if (closePanel) setMobileMenuOpen(false);
-    if (shouldFocus) window.setTimeout(() => textInput.current?.focus(), 0);
+    if (shouldFocus) window.setTimeout(() => textInput.current?.focus({ preventScroll: true }), 0);
+  }
+
+  function startModePractice() {
+    const startTime = Date.now();
+    resetPractice(selectedId, false, false);
+    setNow(startTime);
+    setCountdownEndsAt(startTime + 5000);
   }
 
   function handleTyping(event: FormEvent<HTMLTextAreaElement>) {
+    if (isModesPage && startedAt === null) return;
     const nextInput = event.currentTarget.value.slice(0, runText.length);
     setInput(nextInput);
     if (nextInput.length > 0 && startedAt === null) setStartedAt(Date.now());
@@ -356,7 +485,10 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
   function selectLesson(nextLessonId: string) {
     if (isStatsPage || isModesPage) navigate('/');
     const nextLesson = lessons.find((item) => item.id === nextLessonId);
-    if (nextLesson) setOpenStage(nextLesson.group);
+    if (nextLesson) {
+      setOpenStage(nextLesson.group);
+      setLessonPrompt(buildLessonPracticeText(nextLesson, runText));
+    }
     resetPractice(nextLessonId);
   }
 
@@ -369,10 +501,15 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
     resetPractice(selectedId, false, false);
   }
 
+  function startNewLessonSentence() {
+    setLessonPrompt(buildLessonPracticeText(lesson, runText));
+    resetPractice(selectedId, false, false);
+  }
+
   function advanceLesson() {
     const currentIndex = lessons.findIndex((item) => item.id === selectedId);
     const next = lessons[(currentIndex + 1) % lessons.length];
-    resetPractice(next.id);
+    selectLesson(next.id);
   }
 
   function handleTypingKey(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -415,7 +552,7 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
         </div>
       </aside>
       {!isStatsPage && !isGameZone && (
-        <aside className={`lesson-panel ${mobileMenuOpen ? 'lesson-panel-open' : ''}`}>
+        <aside className={`lesson-panel ${isModesPage ? 'lesson-panel-modes' : ''} ${mobileMenuOpen ? 'lesson-panel-open' : ''}`}>
           <nav className="mobile-primary-links" aria-label="Main navigation">
             <Link className={`primary-nav-link ${isLearningPage ? 'primary-nav-link-active' : ''}`} to="/" aria-label="Beginner Learning" onClick={() => setMobileMenuOpen(true)}><BookOpen size={17} /><span>Beginner Learning</span></Link>
             <Link className={`primary-nav-link ${isModesPage ? 'primary-nav-link-active' : ''}`} to="/modes" aria-label="Typing Modes" onClick={() => setMobileMenuOpen(true)}><Keyboard size={17} /><span>Typing Modes</span></Link>
@@ -425,19 +562,6 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
             <div><span className="lesson-panel-kicker">{isModesPage ? 'TYPING MODES' : 'BEGINNER LEARNING'}</span><strong>{isModesPage ? 'Practice setup' : 'Your path'}</strong></div>
             <span className="lesson-panel-total">{isModesPage ? '03 MODES' : `${completedLessonIds.size} / 25`}</span>
           </div>
-          {isModesPage && <section className="typing-modes" aria-label="Typing modes">
-            <div className="mode-tabs" role="group" aria-label="Typing mode">
-              {(['time', 'words', 'quote'] as const).map((mode) => (
-                <button key={mode} className={typingMode === mode ? 'mode-tab mode-tab-active' : 'mode-tab'} aria-pressed={typingMode === mode} onClick={() => {
-                  setTypingMode(mode);
-                  if (mode === 'quote') setCurrentSentence(getRandomSentence(quoteLength, currentSentence));
-                  resetPractice(selectedId, false, false);
-                }}>
-                  {mode === 'time' ? <Clock3 size={13} /> : mode === 'words' ? <Type size={13} /> : <Quote size={13} />}{mode}
-                </button>
-              ))}
-            </div>
-          </section>}
           {isLearningPage && <>
           <button className="next-challenge" onClick={beginNextChallenge}>
             <span className="next-challenge-label">{completedLessonIds.has(nextChallenge.id) ? 'REPLAY FINAL CHALLENGE' : 'UP NEXT'}</span>
@@ -496,7 +620,7 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
       )}
       {mobileMenuOpen && <button className="mobile-backdrop" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu" />}
 
-      <main className={`studio-main ${isStatsPage || isGameZone ? 'studio-main-stats' : ''}`}>
+      <main className={`studio-main ${isStatsPage || isGameZone ? 'studio-main-stats' : ''} ${isModesPage ? 'studio-main-modes' : ''}`}>
         <header className="topbar">
           <div className="topbar-left">
             <button className="mobile-menu-button icon-button" onClick={() => setMobileMenuOpen((open) => !open)} aria-label={mobileMenuOpen ? 'Close menu' : 'Open lesson menu'}>
@@ -506,6 +630,7 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
           </div>
           <div className="topbar-right">
             <span className="daily-mark"><span /> DAILY PRACTICE</span>
+            <ColorThemePicker palette={palette} onPaletteChange={onPaletteChange} />
             <button className="icon-button theme-switch" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title="Change appearance">
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
             </button>
@@ -513,12 +638,12 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
           </div>
         </header>
 
-        <div className="studio-content">
-          {!isGameZone && <section className="practice-heading">
+        <div className={`studio-content ${isStatsPage ? 'studio-content-stats' : ''} ${isModesPage ? 'studio-content-modes' : ''}`}>
+          {!isGameZone && !isStatsPage && <section className={`practice-heading ${isModesPage ? 'practice-heading-modes' : ''}`}>
             <div>
-              <p className="eyebrow"><span className="eyebrow-bar" /> {isStatsPage ? 'ACCOUNT OVERVIEW' : isModesPage ? 'MODE SETTINGS' : lesson.group.toUpperCase()}</p>
-              <h1>{isStatsPage ? 'Your typing, over time.' : isModesPage ? 'Choose your next drill.' : user ? `Ready, ${user.name.split(' ')[0]}?` : 'Find your home row.'}</h1>
-              <p className="heading-subtitle">{isStatsPage ? 'Every run, every lesson, all in one place.' : isModesPage ? 'Select a mode in the sidebar, then start typing.' : 'A few steady minutes is all it takes to build a better rhythm.'}</p>
+              <p className="eyebrow"><span className="eyebrow-bar" /> {isModesPage ? 'MODE SETTINGS' : lesson.group.toUpperCase()}</p>
+              <h1>{isModesPage ? 'Pick your pace. Lock in.' : user ? `Ready, ${user.name.split(' ')[0]}?` : 'Find your home row.'}</h1>
+              <p className="heading-subtitle">{isModesPage ? 'Pick a mode, tune your setup, and get into your flow.' : 'Choose a lesson, click the practice text, and type what you see. Accuracy comes before speed.'}</p>
             </div>
             {isLearningPage && <div className="lesson-badge"><span>LESSON</span><strong>{String(lesson.number).padStart(2, '0')}<i> / {String(lessons.length).padStart(2, '0')}</i></strong></div>}
           </section>}
@@ -555,10 +680,27 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
               }}
             />
           ) : isStatsPage ? (
-            <TotalStats user={user} stats={stats} sessions={sessions} />
+            <TotalStats user={user} stats={stats} onSelectLesson={selectLesson} />
           ) : (
           <>
           {isModesPage && <section className="mode-main-settings" aria-label="Typing mode options">
+            <div className="mode-settings-heading">
+              <div>
+                <span className="setting-label">PICK YOUR MODE</span>
+                <strong>{typingMode === 'time' ? 'Beat the clock.' : typingMode === 'words' ? 'Set your own pace.' : 'Find your flow.'}</strong>
+              </div>
+              <div className="mode-tabs mode-tabs-main" role="group" aria-label="Typing mode">
+                {(['time', 'words', 'quote'] as const).map((mode) => (
+                  <button key={mode} className={typingMode === mode ? 'mode-tab mode-tab-active' : 'mode-tab'} aria-pressed={typingMode === mode} onClick={() => {
+                    setTypingMode(mode);
+                    if (mode === 'quote') setCurrentSentence(getRandomSentence(quoteLength, currentSentence));
+                    resetPractice(selectedId, false, false);
+                  }}>
+                    {mode === 'time' ? <Clock3 size={15} /> : mode === 'words' ? <Type size={15} /> : <Quote size={15} />}{mode}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mode-main-settings-top">
               <div className="mode-main-selector">
                 <span className="setting-label">{typingMode === 'time' ? 'DURATION' : typingMode === 'words' ? 'WORD COUNT' : 'QUOTE LENGTH'}</span>
@@ -591,25 +733,75 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
             <span>{typingMode === 'time' ? `${timeLimitSeconds} seconds` : typingMode === 'words' ? `${selectedWordCount} words` : `${quoteLength} quote`}</span>
             <span className="mode-setting-tags">{difficulty}{includePunctuation ? ' · punctuation' : ''}{includeNumbers ? ' · numbers' : ''}</span>
           </section>}
+          {isLearningPage && <section className="beginner-guide" aria-label="How to practice">
+            <strong>FIRST RUN?</strong>
+            <span><i>1</i> Pick a lesson in Your path</span>
+            <span><i>2</i> Click the text and type it</span>
+            <span><i>3</i> Go for accuracy, not speed</span>
+          </section>}
+          {isLearningPage && <section className="beginner-run-controls" aria-label="Beginner practice mode">
+            <div className="beginner-run-modes" role="group" aria-label="Practice mode">
+              {(['lesson', 'time', 'words'] as const).map((mode) => (
+                <button key={mode} className={beginnerPracticeMode === mode ? 'beginner-run-mode beginner-run-mode-active' : 'beginner-run-mode'} aria-pressed={beginnerPracticeMode === mode} onClick={() => {
+                  setBeginnerPracticeMode(mode);
+                  resetPractice(selectedId, false, false);
+                }}>
+                  {mode === 'lesson' ? <BookOpen size={14} /> : mode === 'time' ? <Clock3 size={14} /> : <Type size={14} />}{mode === 'lesson' ? 'Lesson' : mode === 'time' ? 'Time' : 'Words'}
+                </button>
+              ))}
+            </div>
+            {beginnerPracticeMode === 'time' && <div className="beginner-run-options" role="group" aria-label="Time limit">
+              <span className="setting-label">TIME</span>
+              {([10, 30, 60, 120] as const).map((seconds) => <button key={seconds} className={timeLimitSeconds === seconds ? 'segment-active' : ''} aria-pressed={timeLimitSeconds === seconds} onClick={() => { setTimeLimitSeconds(seconds); resetPractice(selectedId, false, false); }}>{seconds < 60 ? `${seconds}s` : `${seconds / 60} min`}</button>)}
+            </div>}
+            {beginnerPracticeMode === 'words' && <div className="beginner-run-options" role="group" aria-label="Word target">
+              <span className="setting-label">WORDS</span>
+              {([10, 50, 100] as const).map((count) => <button key={count} className={beginnerWordCount === count ? 'segment-active' : ''} aria-pressed={beginnerWordCount === count} onClick={() => { setBeginnerWordCount(count); resetPractice(selectedId, false, false); }}>{count}</button>)}
+            </div>}
+            <span className="beginner-run-description">{beginnerPracticeMode === 'lesson' ? 'Full lesson practice' : beginnerPracticeMode === 'time' ? 'Type as much as you can before time runs out' : `Finish ${beginnerWordCount} words to complete the run`}</span>
+          </section>}
           <section className="practice-board" aria-label="Typing practice">
             <div className="board-topline">
               <div className="board-lesson-name"><span className="live-dot" />{isModesPage ? 'Random sentence' : lesson.title}<span className="board-divider">/</span><span className="board-keys">{isModesPage ? typingMode.toUpperCase() : lesson.keys}</span></div>
               <div className="board-actions">
                 <span className={`focus-hint ${isFocused ? 'focus-hint-active' : ''}`}><Command size={13} /> {isFocused ? 'YOU’RE IN' : 'CLICK TO TYPE'}</span>
+                {isLearningPage && <button className="secondary-button beginner-new-sentence" onClick={startNewLessonSentence}><Shuffle size={14} /> New sentence</button>}
                 <button className="icon-button reset-button" onClick={() => resetPractice()} aria-label={isModesPage ? 'Restart sentence' : 'Restart lesson'} title={isModesPage ? 'Restart sentence' : 'Restart lesson'}><RotateCcw size={16} /></button>
               </div>
             </div>
-            <div className={`typing-stage ${isFocused ? 'typing-stage-focused' : ''} ${isComplete ? 'typing-stage-complete' : ''}`} onClick={() => textInput.current?.focus()}>
-              <div className="typing-copy" aria-hidden="true">
-                {Array.from(runText.slice(Math.max(0, input.length - 36), input.length + 140)).map((character, viewIndex) => {
-                  const index = Math.max(0, input.length - 36) + viewIndex;
-                  const typedCharacter = input[index];
-                  const className = typedCharacter === undefined
-                    ? index === input.length ? 'character character-current' : 'character'
-                    : typedCharacter === character ? 'character character-correct' : 'character character-wrong';
-                  return <span className={className} key={`${isModesPage ? 'sentence' : lesson.id}-${index}`}>{character === ' ' ? '\u00a0' : character}</span>;
-                })}
+            <div className={`typing-stage ${isFocused ? 'typing-stage-focused' : ''} ${isComplete ? 'typing-stage-complete' : ''}`} onClick={() => textInput.current?.focus({ preventScroll: true })}>
+              <div className="typing-window" ref={typingWindow} aria-hidden="true">
+                <div className="typing-copy" ref={typingCopy} style={{ transform: `translateY(-${typingLineOffset}px)` }}>
+                  {Array.from(runText).map((character, index) => {
+                    const typedCharacter = input[index];
+                    const className = typedCharacter === undefined
+                      ? index === input.length ? 'character character-current' : 'character'
+                      : typedCharacter === character ? 'character character-correct' : 'character character-wrong';
+                    return <span className={className} key={`${isModesPage ? 'sentence' : lesson.id}-${index}`}>{character}</span>;
+                  })}
+                </div>
               </div>
+              {isModesPage && startedAt === null && (
+                <div className="mode-start-controls" role={countdownSeconds === null ? 'group' : 'timer'} aria-live="polite">
+                  {countdownSeconds === null ? (
+                    <>
+                      <span className="mode-start-kicker">YOUR NEXT SPRINT</span>
+                      <strong>Ready when you are?</strong>
+                      <button className="primary-button mode-start-button" onClick={(event) => { event.stopPropagation(); startModePractice(); }}>
+                        <Zap size={16} /> Start practice
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <strong className="mode-countdown-number">{countdownSeconds}</strong>
+                      <span className="mode-countdown-copy">Get ready to type</span>
+                      <button className="secondary-button mode-countdown-cancel" onClick={(event) => { event.stopPropagation(); resetPractice(selectedId, false, false); }}>
+                        Cancel countdown
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <textarea
                 ref={textInput}
                 className="typing-input"
@@ -623,10 +815,12 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
                 autoComplete="off"
                 autoCorrect="off"
                 spellCheck={false}
-                disabled={isComplete}
+                disabled={isComplete || (isModesPage && startedAt === null)}
                 rows={1}
               />
-              {!input && !isFocused && <div className="stage-prompt"><span className="prompt-key">A</span><span>Start typing to begin</span><ArrowDownRight size={15} /></div>}
+              <div className={`stage-prompt ${input || isFocused || (isModesPage && startedAt === null) ? 'stage-prompt-hidden' : ''}`} aria-hidden={Boolean(input || isFocused || (isModesPage && startedAt === null))}>
+                <span className="prompt-key">A</span><span>Start typing to begin</span><ArrowDownRight size={15} />
+              </div>
               {isComplete && <div className="stage-complete-tag"><Check size={14} /> COMPLETE</div>}
             </div>
             <div className="board-footer">
@@ -656,7 +850,7 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
           ) : (
             <section className="practice-note">
               <div className="note-icon"><CircleHelp size={17} /></div>
-              <p><strong>{isModesPage ? 'A fresh prompt.' : 'Stay loose.'}</strong> {isModesPage ? 'This sentence is independent from Beginner Learning. Use New sentence for another prompt.' : 'Accuracy first; speed follows. Your WPM and mistakes update as you type.'}</p>
+              <p><strong>{isModesPage ? 'A fresh prompt.' : 'One key at a time.'}</strong> {isModesPage ? 'This sentence is independent from Beginner Learning. Use New sentence for another prompt.' : 'Click the practice area and type the text above. Take your time; your results update as you go.'}</p>
               {!isModesPage && <span className="note-step">STAGE {String(stageNumber).padStart(2, '0')} / 06</span>}
             </section>
           )}
@@ -689,6 +883,33 @@ function PracticeApp({ user, token, onSignOut, theme, onToggleTheme }: PracticeA
   );
 }
 
+function ColorThemePicker({ palette, onPaletteChange }: { palette: ColorPalette; onPaletteChange: (palette: ColorPalette) => void }) {
+  return (
+    <details className="palette-picker">
+      <summary className="icon-button theme-switch palette-trigger" aria-label="Choose color theme" title="Choose color theme">
+        <Palette size={18} />
+      </summary>
+      <div className="palette-menu" role="group" aria-label="Color themes">
+        <span className="palette-menu-label">COLOR THEME</span>
+        {colorPalettes.map((option) => (
+          <button
+            className="palette-option"
+            data-selected={palette === option.id}
+            key={option.id}
+            type="button"
+            aria-pressed={palette === option.id}
+            onClick={() => onPaletteChange(option.id)}
+          >
+            <span className="palette-swatch" style={{ backgroundColor: option.color }} aria-hidden="true" />
+            <span>{option.label}</span>
+            {palette === option.id && <Check size={15} aria-hidden="true" />}
+          </button>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function Stat({ label, value, unit = '' }: { label: string; value: string; unit?: string }) {
   return (
     <div className="account-stat">
@@ -698,7 +919,48 @@ function Stat({ label, value, unit = '' }: { label: string; value: string; unit?
   );
 }
 
-function TotalStats({ user, stats, sessions }: { user: Account | null; stats: UserStats | null; sessions: SavedSession[] }) {
+function ModeRecordGroup({ title, type, records, emptyMessage }: {
+  title: string;
+  type: 'time' | 'words';
+  records: ReturnType<typeof buildModeRecords>;
+  emptyMessage: string;
+}) {
+  return (
+    <section className={`mode-record-group mode-record-group-${type}`} aria-label={title}>
+      <div className="mode-record-group-heading">
+        <div><span>{type === 'time' ? <Clock3 size={13} /> : <Type size={13} />}</span><strong>{title}</strong></div>
+        <small>{records.length} {type === 'time' ? 'TIME' : 'WORD'} CHALLENGES</small>
+      </div>
+      <div className={`mode-record-grid mode-record-grid-${type}`}>
+        {records.map((record) => (
+          <article className={`mode-record ${record.runs ? 'mode-record-played' : 'mode-record-unplayed'}`} key={record.target}>
+            {record.runs ? (
+              <>
+                <span className="mode-record-label">{record.label}</span>
+                <span className="mode-record-metric-label">BEST SPEED</span>
+                <strong className="mode-record-wpm">{record.bestWpm}<small>WPM</small></strong>
+                <span className="mode-record-average"><span>AVERAGE</span><strong>{record.averageWpm} <i>WPM</i></strong></span>
+                <span className="mode-record-accuracy"><Check size={12} aria-hidden="true" /> {record.averageAccuracy}% <i>accuracy</i></span>
+                <span className="mode-record-runs">{record.runs} {record.runs === 1 ? 'run' : 'runs'}</span>
+              </>
+            ) : (
+              <>
+                <span className="mode-record-label">{record.label}</span>
+                <span className="mode-record-empty"><span aria-hidden="true">＋</span>{emptyMessage}</span>
+              </>
+            )}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TotalStats({ user, stats, onSelectLesson }: {
+  user: Account | null;
+  stats: UserStats | null;
+  onSelectLesson: (lessonId: string) => void;
+}) {
   if (!user) {
     return (
       <section className="stats-signin">
@@ -709,8 +971,31 @@ function TotalStats({ user, stats, sessions }: { user: Account | null; stats: Us
     );
   }
 
+  const activityWeeks = buildActivityGrid(stats?.activityDays ?? []);
+  const activeDays = (stats?.activityDays ?? []).filter(({ runs }) => runs > 0).length;
+  const weakestKey = (stats?.keyStats ?? [])
+    .filter(({ attempts, mistakes }) => attempts >= 5 && mistakes > 0)
+    .sort((left, right) => right.mistakes / right.attempts - left.mistakes / left.attempts)[0];
+  const recommendedLesson = weakestKey ? recommendLessonForKey(weakestKey.key, lessons) : undefined;
+  const timeRecords = buildModeRecords(stats?.modeRecords ?? [], 'time', [15, 30, 60, 120]);
+  const wordRecords = buildModeRecords(stats?.modeRecords ?? [], 'words', [10, 25, 50, 100]);
+  const activityMonths = activityWeeks.map((week, index) => {
+    const month = new Date(`${week[0].date}T00:00:00.000Z`).getUTCMonth();
+    return index === 0 || month !== new Date(`${activityWeeks[index - 1][0].date}T00:00:00.000Z`).getUTCMonth()
+      ? new Date(`${week[0].date}T00:00:00.000Z`).toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' })
+      : '';
+  });
+
   return (
     <div className="stats-page">
+      <section className="task-stats-section mode-records-section" aria-label="Time and word mode records">
+        <div className="section-heading"><div><p className="eyebrow"><span className="eyebrow-bar eyebrow-bar-teal" /> YOUR MODE RECORDS</p><h2>Challenge records.</h2></div><span className="mode-records-caption">Your average speed and accuracy, at a glance.</span></div>
+        <div className="mode-record-groups">
+          <ModeRecordGroup title="Time mode" type="time" records={timeRecords} emptyMessage="Not played yet" />
+          <ModeRecordGroup title="Word mode" type="words" records={wordRecords} emptyMessage="Not played yet" />
+        </div>
+      </section>
+
       <section className="account-stats stats-overview" aria-label="All-time typing statistics">
         <div className="account-stats-heading">
           <div><p className="eyebrow"><span className="eyebrow-bar" /> ALL-TIME TOTALS</p><h2>Every run adds up.</h2></div>
@@ -730,70 +1015,52 @@ function TotalStats({ user, stats, sessions }: { user: Account | null; stats: Us
         </div>
       </section>
 
-      <section className="task-stats-section">
-        <div className="section-heading"><div><p className="eyebrow"><span className="eyebrow-bar eyebrow-bar-teal" /> BY TASK</p><h2>How each drill is going.</h2></div></div>
-        {(stats?.taskBreakdown?.length ?? 0) > 0 ? (
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Task</th><th>Mode / options</th><th>Plays</th><th>Avg WPM</th><th>Best WPM</th><th>Accuracy</th><th>Time</th></tr></thead>
-              <tbody>{stats?.taskBreakdown?.map((task) => (
-                <tr key={`${task.lessonId}-${task.sentence}-${task.mode}-${task.difficulty}-${task.timeLimitSeconds}-${task.wordCount}-${task.quoteLength}-${task.includePunctuation}-${task.includeNumbers}`}>
-                  <td title={task.sentence || getLessonTitle(task.lessonId)}>{task.sentence || getLessonTitle(task.lessonId)}</td><td>{formatMode(task)}</td><td>{task.gamesPlayed}</td><td>{task.averageWpm}</td><td>{task.bestWpm}</td><td>{task.averageAccuracy}%</td><td>{formatDuration(task.totalDurationSeconds)}</td>
-                </tr>
-              ))}</tbody>
-            </table>
+      <section className="task-stats-section consistency-section">
+        <div className="section-heading">
+          <div><p className="eyebrow"><span className="eyebrow-bar eyebrow-bar-teal" /> YOUR CONSISTENCY</p><h2>Practice, day by day.</h2></div>
+          <span className="history-count">{activeDays} ACTIVE DAYS · LAST YEAR</span>
+        </div>
+        <div className="consistency-card">
+          <div className="contribution-total"><strong>{(stats?.activityDays ?? []).reduce((total, day) => total + day.runs, 0)} practice runs</strong><span>in the last 365 days</span></div>
+          <div className="activity-scroll">
+            <div className="activity-months" aria-hidden="true">
+              <span className="activity-day-label-spacer" />
+              <div className="activity-week-labels" style={{ gridTemplateColumns: `repeat(${activityWeeks.length}, minmax(0, 1fr))` }}>
+                {activityMonths.map((month, index) => month && <span key={`month-${index}`} style={{ gridColumnStart: index + 1 }}>{month}</span>)}
+              </div>
+            </div>
+            <div className="activity-body">
+              <div className="activity-day-labels" aria-hidden="true"><span>Sun</span><span /><span>Tue</span><span /><span>Thu</span><span /><span>Sat</span></div>
+              <div className="activity-weeks" role="img" aria-label={`Practice activity for the last year: ${activeDays} active days`} style={{ gridTemplateColumns: `repeat(${activityWeeks.length}, minmax(0, 1fr))` }}>
+                {activityWeeks.map((week, weekIndex) => (
+                  <div className="activity-week" key={`week-${weekIndex}`}>
+                    {week.map((day) => <span className={`activity-cell activity-level-${day.level}`} key={day.date} title={`${day.date}: ${day.runs} ${day.runs === 1 ? 'run' : 'runs'}`} />)}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        ) : <div className="history-empty"><span className="history-empty-icon"><Keyboard size={17} /></span><span>Complete a timed drill and its breakdown will appear here.</span></div>}
+          <div className="activity-legend"><span>Less</span>{[0, 1, 2, 3, 4].map((level) => <i key={level} className={`activity-cell activity-level-${level}`} />)}<span>More</span></div>
+        </div>
       </section>
 
-      <section className="task-stats-section run-history-section">
-        <div className="section-heading"><div><p className="eyebrow"><span className="eyebrow-bar" /> RUN HISTORY</p><h2>Every completed task.</h2></div><span className="history-count">{sessions.length} RECENT</span></div>
-        {sessions.length > 0 ? (
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead><tr><th>Task</th><th>Mode / options</th><th>Played</th><th>WPM</th><th>Accuracy</th><th>Mistakes</th><th>Date</th></tr></thead>
-              <tbody>{sessions.map((session) => (
-                <tr key={session._id}>
-                  <td title={session.sentence || getLessonTitle(session.lessonId)}>{session.sentence || getLessonTitle(session.lessonId)}</td><td>{formatMode(session)}</td><td>{formatDuration(session.durationSeconds)}</td><td>{session.wpm.toFixed(1)}</td><td>{session.accuracy}%</td><td>{session.mistakes}</td><td>{new Date(session.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        ) : <div className="history-empty"><span className="history-empty-icon"><Clock3 size={17} /></span><span>Your completed drills will be listed here.</span></div>}
+      <section className="task-stats-section key-insights-section">
+        <div className="section-heading"><div><p className="eyebrow"><span className="eyebrow-bar" /> PERSONALIZED PRACTICE</p><h2>Find your next focus.</h2></div></div>
+        <div className="key-insight-card">
+          {weakestKey && recommendedLesson ? (
+            <>
+              <div className="weak-key-tile"><span>NEEDS PRACTICE</span><kbd>{weakestKey.key === ' ' ? 'Space' : weakestKey.key}</kbd></div>
+              <div className="key-insight-copy"><strong>Let’s give “{weakestKey.key}” a little more practice.</strong><span>{weakestKey.mistakes} misses across {weakestKey.attempts} attempts ({Math.round(weakestKey.mistakes / weakestKey.attempts * 100)}% error rate).</span></div>
+              <div className="key-recommendation"><span>RECOMMENDED LESSON</span><strong>{recommendedLesson.title}</strong><button className="primary-button compact-button" onClick={() => onSelectLesson(recommendedLesson.id)}>Practice this key <ArrowRight size={15} /></button></div>
+            </>
+          ) : (
+            <div className="key-insight-empty"><Keyboard size={21} /><div><strong>Personal key tips are on the way.</strong><span>Key tracking starts with new runs. After a few sessions, we’ll spot the keys that need extra practice and recommend a lesson.</span></div></div>
+          )}
+        </div>
       </section>
+
     </div>
   );
-}
-
-function getLessonTitle(lessonId: string) {
-  if (lessonId === 'sentence-mode') return 'Typing Modes';
-  return lessons.find((lesson) => lesson.id === lessonId)?.title ?? lessonId;
-}
-
-function formatLimit(seconds: number) {
-  if (seconds === 0) return 'Untimed';
-  return seconds >= 60 && seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`;
-}
-
-function formatMode(settings: {
-  mode?: 'lesson' | 'time' | 'words' | 'quote' | 'race';
-  difficulty?: 'easy' | 'medium' | 'hard';
-  timeLimitSeconds?: number;
-  wordCount?: number;
-  quoteLength?: 'short' | 'medium' | 'long';
-  includePunctuation?: boolean;
-  includeNumbers?: boolean;
-}) {
-  const mode = settings.mode ?? 'lesson';
-  if (mode === 'lesson') return 'Beginner lesson';
-  if (mode === 'race') return 'Game Zone race';
-  const label = mode === 'time'
-    ? `Time · ${formatLimit(settings.timeLimitSeconds ?? 30)}`
-    : mode === 'words'
-      ? `Words · ${settings.wordCount || 25}`
-      : `Quote · ${settings.quoteLength ?? 'short'}`;
-  const options = [settings.difficulty, settings.includePunctuation ? 'punctuation' : '', settings.includeNumbers ? 'numbers' : ''].filter(Boolean);
-  return `${label}${options.length ? ` · ${options.join(' · ')}` : ''}`;
 }
 
 function Metric({ icon, label, value, suffix, tone }: { icon: React.ReactNode; label: string; value: string; suffix: string; tone: string }) {
