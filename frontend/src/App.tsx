@@ -148,7 +148,7 @@ export default function App() {
       />
     </Routes>
   );
-  const googleClientId = import.meta.env.GOOGLE_CLIENT_ID;
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   return googleClientId
     ? <GoogleOAuthProvider clientId={googleClientId}>{routes}</GoogleOAuthProvider>
     : routes;
