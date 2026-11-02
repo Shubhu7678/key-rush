@@ -55,26 +55,26 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #171b1b;
-  --surface: #202626;
-  --surface-muted: #272e2d;
-  --surface-strong: #303937;
-  --ink: #edf0e9;
-  --ink-soft: #a9b2ad;
-  --ink-faint: #7d8984;
-  --line: #333c39;
-  --line-strong: #46514d;
+  --page: #10111a;
+  --surface: #191a25;
+  --surface-muted: #20212d;
+  --surface-strong: #2a2b39;
+  --ink: #f0eff7;
+  --ink-soft: #b6b5c3;
+  --ink-faint: #858594;
+  --line: #2b2c3a;
+  --line-strong: #414151;
   --coral: #f17760;
   --coral-deep: #ff9988;
   --coral-wash: #382a28;
-  --teal: #65c4b2;
-  --teal-wash: #243734;
-  --blue: #9cafff;
+  --teal: #bf91ff;
+  --teal-wash: #32253f;
+  --blue: #8ca9ff;
   --blue-wash: #282e43;
   --red: #f17b74;
-  --sidebar: #1b2120;
-  --sidebar-active: #2a3230;
-  --stage: #1c2221;
+  --sidebar: #12131d;
+  --sidebar-active: #34204a;
+  --stage: #14151f;
   --key-shadow: #080b0b;
 }
 
@@ -91,9 +91,9 @@
 }
 
 :root[data-theme='dark'][data-palette='violet'] {
-  --coral: #b09aff;
-  --coral-deep: #c8b8ff;
-  --coral-wash: #302943;
+  --coral: #c889ff;
+  --coral-deep: #d7a8ff;
+  --coral-wash: #30213e;
 }
 
 :root[data-theme='dark'][data-palette='amber'] {
@@ -258,7 +258,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .breadcrumb strong { color: var(--ink-soft); font-weight: 600; }
 .topbar-right { gap: 17px; }
 .daily-mark { display: flex; align-items: center; gap: 7px; color: var(--ink-soft); font-family: 'DM Mono', monospace; font-size: 9px; }
-.daily-mark > span { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 3px var(--teal-wash); }
+.daily-mark > svg { color: #ffad43; }
 .icon-button { display: inline-grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--ink-soft); cursor: pointer; transition: color .15s ease, background .15s ease, border .15s ease; }
 .icon-button:hover { border-color: var(--line); background: var(--surface); color: var(--ink); }
 .theme-switch { border-color: var(--line); background: var(--surface); }
@@ -966,4 +966,238 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+:root[data-theme='dark'] .sidebar {
+  background: linear-gradient(180deg, #12131d 0%, #11121b 100%);
+  border-color: #292a38;
+}
+
+:root[data-theme='dark'] .sidebar-top { border-bottom-color: #292a38; }
+:root[data-theme='dark'] .brand-mark { border-radius: 12px; }
+:root[data-theme='dark'] .primary-nav-link { border-radius: 10px; }
+:root[data-theme='dark'] .primary-nav-link-active,
+:root[data-theme='dark'] .primary-nav-link-active:hover {
+  border-color: color-mix(in srgb, var(--coral), transparent 74%);
+  background: linear-gradient(105deg, color-mix(in srgb, var(--coral), #21162e 64%), #211d30);
+  color: #e0c3ff;
+  box-shadow: 0 0 24px color-mix(in srgb, var(--coral), transparent 88%);
+}
+
+:root[data-theme='dark'] .lesson-panel {
+  border-color: #292a38;
+  background: #14151f;
+}
+
+:root[data-theme='dark'] .lesson-panel-heading { min-height: 82px; }
+:root[data-theme='dark'] .lesson-panel-total { border-radius: 99px; }
+:root[data-theme='dark'] .next-challenge {
+  margin: 14px 12px 8px;
+  padding: 13px;
+  border-radius: 12px;
+  background: linear-gradient(130deg, #282137, #211d30);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+:root[data-theme='dark'] .lesson-link { border-radius: 9px; }
+:root[data-theme='dark'] .lesson-link-active,
+:root[data-theme='dark'] .lesson-link-active:hover {
+  background: #342447;
+  color: #f0e2ff;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--coral), transparent 68%);
+}
+:root[data-theme='dark'] .stage-toggle { border-bottom-color: #2a2b39; }
+:root[data-theme='dark'] .sidebar-bottom { border-top-color: #292a38; }
+:root[data-theme='dark'] .sidebar-bottom .user-block {
+  border-color: #302d40;
+  background: linear-gradient(135deg, #252136, #1d1d2b);
+}
+
+:root[data-theme='dark'] .topbar {
+  height: 57px;
+  border-bottom-color: #292a38;
+  background: color-mix(in srgb, #11121b, transparent 7%);
+}
+:root[data-theme='dark'] .daily-mark {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-family: 'Manrope', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+}
+:root[data-theme='dark'] .theme-switch,
+:root[data-theme='dark'] .topbar-signin {
+  border-color: var(--line);
+  border-radius: 99px;
+  background: var(--surface);
+}
+:root[data-theme='dark'] .topbar-signin { padding: 9px 14px; color: var(--ink); }
+:root[data-theme='dark'] .studio-main:not(.studio-main-stats) .studio-content { padding-top: 27px; }
+:root[data-theme='dark'] .practice-heading { position: relative; min-height: 94px; margin-bottom: 16px; }
+:root[data-theme='dark'] .practice-heading > div { position: relative; z-index: 1; }
+:root[data-theme='dark'] .practice-heading h1 {
+  margin: 8px 0 5px;
+  font-size: clamp(29px, 3.2vw, 37px);
+  font-weight: 800;
+  letter-spacing: -.045em;
+}
+:root[data-theme='dark'] .heading-accent { color: var(--coral); }
+:root[data-theme='dark'] .practice-heading .eyebrow { color: #c9a9ee; font-weight: 700; }
+:root[data-theme='dark'] .practice-heading .eyebrow-bar {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--coral-wash);
+}
+:root[data-theme='dark'] .heading-subtitle { max-width: 640px; }
+:root[data-theme='dark'] .practice-heading > .home-row-key-art {
+  position: absolute;
+  top: 4px;
+  right: 112px;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 10px 0;
+  perspective: 400px;
+}
+:root[data-theme='dark'] .home-row-key-art::before {
+  position: absolute;
+  inset: 4px -18px -8px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--coral), transparent 82%), transparent 68%);
+  content: '';
+  filter: blur(8px);
+}
+:root[data-theme='dark'] .home-row-key-art span {
+  display: grid;
+  width: 42px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid #50416c;
+  border-radius: 11px;
+  background: linear-gradient(145deg, #29243a, #171824);
+  color: #f4edff;
+  box-shadow: 0 8px 0 #100f19, 0 13px 22px rgba(0, 0, 0, .35), inset 0 1px rgba(255, 255, 255, .12);
+  font-family: 'DM Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  transform: rotate(-8deg) translateY(9px);
+}
+:root[data-theme='dark'] .home-row-key-art span:nth-child(2) { transform: rotate(-8deg) translateY(-4px); }
+:root[data-theme='dark'] .home-row-key-art span:nth-child(3) { transform: rotate(-8deg) translateY(6px); }
+:root[data-theme='dark'] .home-row-key-art span:nth-child(4) { transform: rotate(-8deg) translateY(1px); }
+:root[data-theme='dark'] .lesson-badge { position: relative; z-index: 1; }
+:root[data-theme='dark'] .momentum-panel {
+  margin: 0 0 12px;
+  border-radius: 13px;
+  background: linear-gradient(120deg, #1a1b27, #1c1d29);
+  box-shadow: 0 7px 22px rgba(0, 0, 0, .12);
+}
+:root[data-theme='dark'] .momentum-xp,
+:root[data-theme='dark'] .momentum-streak,
+:root[data-theme='dark'] .momentum-goal { min-height: 65px; padding: 10px 13px; }
+:root[data-theme='dark'] .momentum-icon-xp { background: #3a3023; color: #ffba4d; }
+:root[data-theme='dark'] .momentum-icon-streak { background: #42262b; color: #ff725e; }
+:root[data-theme='dark'] .momentum-goal .goal-count { color: var(--coral); }
+:root[data-theme='dark'] .beginner-guide,
+:root[data-theme='dark'] .beginner-run-controls {
+  border-radius: 12px;
+  background: linear-gradient(110deg, #1c1d29, #20212d);
+  box-shadow: 0 5px 16px rgba(0, 0, 0, .1);
+}
+:root[data-theme='dark'] .beginner-guide { min-height: 43px; margin: 0 0 10px; }
+:root[data-theme='dark'] .beginner-guide > strong {
+  padding: 5px 9px;
+  border-radius: 99px;
+  background: #4a3470;
+  color: #e3c9ff;
+}
+:root[data-theme='dark'] .beginner-guide i { background: #49356d; color: #e3c9ff; }
+:root[data-theme='dark'] .beginner-run-controls { min-height: 45px; margin-bottom: 10px; }
+:root[data-theme='dark'] .beginner-run-mode-active {
+  border-color: color-mix(in srgb, var(--coral), transparent 64%);
+  background: #d7aaff;
+  color: #22152d;
+}
+:root[data-theme='dark'] .practice-board {
+  border-radius: 14px;
+  background: linear-gradient(145deg, #1b1c28, #191a25);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18);
+}
+:root[data-theme='dark'] .board-topline { min-height: 49px; }
+:root[data-theme='dark'] .typing-stage {
+  min-height: 220px;
+  margin: 0 10px;
+  padding: 16px 27px;
+  border: 1px solid #30313f;
+  border-radius: 14px;
+  background-color: #12131c;
+  background-image: none;
+}
+:root[data-theme='dark'] .typing-window { height: calc(4 * 1.95em); }
+:root[data-theme='dark'] .typing-copy { color: #b6b5c3; }
+:root[data-theme='dark'] .character { color: #b6b5c3; }
+:root[data-theme='dark'] .character-correct { color: #d4d0df; }
+:root[data-theme='dark'] .character-current { background: #d7aaff; color: #20172a; }
+:root[data-theme='dark'] .board-footer { min-height: 49px; }
+:root[data-theme='dark'] .metrics-row {
+  overflow: hidden;
+  margin-top: 12px;
+  border-radius: 13px;
+  background: linear-gradient(120deg, #1b1c28, #191a25);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .14);
+}
+:root[data-theme='dark'] .metric { min-height: 70px; padding: 10px 15px; }
+:root[data-theme='dark'] .metric-value { font-size: 18px; }
+
+@media (max-width: 900px) {
+  :root[data-theme='dark'] .home-row-key-art { right: 88px; transform: scale(.8); transform-origin: top right; }
+}
+
+@media (max-width: 1100px) {
+  :root[data-theme='dark'] .sidebar { width: 76px; }
+  :root[data-theme='dark'] .sidebar-top { align-items: center; padding-inline: 8px; }
+  :root[data-theme='dark'] .sidebar-top .brand > span:last-child,
+  :root[data-theme='dark'] .sidebar-label { display: none; }
+  :root[data-theme='dark'] .primary-nav { gap: 2px; padding: 10px 8px; }
+  :root[data-theme='dark'] .primary-nav-link { justify-content: center; padding-inline: 0; }
+  :root[data-theme='dark'] .primary-nav-link span,
+  :root[data-theme='dark'] .user-detail,
+  :root[data-theme='dark'] .sidebar-action,
+  :root[data-theme='dark'] .user-sign-in { display: none; }
+  :root[data-theme='dark'] .sidebar-bottom { padding-inline: 8px; }
+  :root[data-theme='dark'] .user-block { justify-content: center; }
+  :root[data-theme='dark'] .lesson-panel { left: 76px; width: 220px; }
+  :root[data-theme='dark'] .studio-main { margin-left: 296px; }
+  :root[data-theme='dark'] .studio-main-stats,
+  :root[data-theme='dark'] .studio-main-modes { margin-left: 76px; }
+  :root[data-theme='dark'] .topbar { padding-inline: 24px; }
+  :root[data-theme='dark'] .topbar-left,
+  :root[data-theme='dark'] .topbar-right { gap: 10px; }
+  :root[data-theme='dark'] .daily-mark,
+  :root[data-theme='dark'] .topbar-signin { white-space: nowrap; }
+}
+
+@media (max-width: 780px) {
+  :root[data-theme='dark'] .sidebar { display: none; }
+  :root[data-theme='dark'] .lesson-panel { left: 0; width: min(320px, calc(100vw - 46px)); }
+  :root[data-theme='dark'] .lesson-panel-modes { left: 0; width: min(320px, calc(100vw - 46px)); }
+  :root[data-theme='dark'] .studio-main,
+  :root[data-theme='dark'] .studio-main-stats,
+  :root[data-theme='dark'] .studio-main-modes { margin-left: 0; }
+  :root[data-theme='dark'] .home-row-key-art { display: none; }
+  :root[data-theme='dark'] .practice-heading { min-height: auto; }
+  :root[data-theme='dark'] .studio-main:not(.studio-main-stats) .studio-content { padding-top: 25px; }
+  :root[data-theme='dark'] .typing-stage { min-height: 200px; margin: 0 7px; padding: 17px 16px; }
+  :root[data-theme='dark'] .typing-window,
+  :root[data-theme='dark'] .typing-copy { font-size: 17px; }
+  :root[data-theme='dark'] .momentum-panel { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 1350px) {
+  :root[data-theme='dark'] .practice-heading > .home-row-key-art { display: none; }
 }

@@ -77,11 +77,11 @@ function getTypingLineOffset(windowElement: HTMLDivElement | null, copyElement: 
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() =>
-    localStorage.getItem('keyrush-theme') === 'dark' ? 'dark' : 'light',
+    localStorage.getItem('keyrush-theme-v2') === 'light' ? 'light' : 'dark',
   );
   const [palette, setPalette] = useState<ColorPalette>(() => {
-    const savedPalette = localStorage.getItem('keyrush-palette');
-    return colorPalettes.find(({ id }) => id === savedPalette)?.id ?? 'coral';
+    const savedPalette = localStorage.getItem('keyrush-palette-v2');
+    return colorPalettes.find(({ id }) => id === savedPalette)?.id ?? 'violet';
   });
   const [token, setToken] = useState(() => localStorage.getItem('keyrush-token') ?? '');
   const [user, setUser] = useState<Account | null>(null);
@@ -90,12 +90,12 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem('keyrush-theme', theme);
+    localStorage.setItem('keyrush-theme-v2', theme);
   }, [theme]);
 
   useEffect(() => {
     document.documentElement.dataset.palette = palette;
-    localStorage.setItem('keyrush-palette', palette);
+    localStorage.setItem('keyrush-palette-v2', palette);
   }, [palette]);
 
   useEffect(() => {
@@ -521,7 +521,7 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
       <aside className="sidebar">
         <div className="sidebar-top">
           <Link className="brand" to="/" aria-label="KeyRush home">
-            <span className="brand-mark"><Keyboard size={19} strokeWidth={2.2} /></span>
+            <span className="brand-mark"><Zap size={21} fill="currentColor" strokeWidth={2.2} /></span>
             <span>keyrush<span className="brand-period">.</span></span>
           </Link>
           <span className="sidebar-label">TYPING STUDIO</span>
@@ -629,7 +629,7 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
             <span className="breadcrumb">Studio <ChevronRight size={14} /> <strong>{isStatsPage ? 'Total Stats' : isGameZone ? 'Game Zone' : isModesPage ? 'Typing Modes' : 'Beginner Learning'}</strong></span>
           </div>
           <div className="topbar-right">
-            <span className="daily-mark"><span /> DAILY PRACTICE</span>
+            <span className="daily-mark"><Flame size={13} fill="currentColor" /> DAILY PRACTICE</span>
             <ColorThemePicker palette={palette} onPaletteChange={onPaletteChange} />
             <button className="icon-button theme-switch" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title="Change appearance">
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
@@ -642,9 +642,12 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
           {!isGameZone && !isStatsPage && <section className={`practice-heading ${isModesPage ? 'practice-heading-modes' : ''}`}>
             <div>
               <p className="eyebrow"><span className="eyebrow-bar" /> {isModesPage ? 'MODE SETTINGS' : lesson.group.toUpperCase()}</p>
-              <h1>{isModesPage ? 'Pick your pace. Lock in.' : user ? `Ready, ${user.name.split(' ')[0]}?` : 'Find your home row.'}</h1>
+              <h1>{isModesPage ? 'Pick your pace. Lock in.' : user ? `Ready, ${user.name.split(' ')[0]}?` : <>Find your <span className="heading-accent">home row.</span></>}</h1>
               <p className="heading-subtitle">{isModesPage ? 'Pick a mode, tune your setup, and get into your flow.' : 'Choose a lesson, click the practice text, and type what you see. Accuracy comes before speed.'}</p>
             </div>
+            {isLearningPage && <div className="home-row-key-art" aria-hidden="true">
+              <span>A</span><span>S</span><span>D</span><span>F</span>
+            </div>}
             {isLearningPage && <div className="lesson-badge"><span>LESSON</span><strong>{String(lesson.number).padStart(2, '0')}<i> / {String(lessons.length).padStart(2, '0')}</i></strong></div>}
           </section>}
 
