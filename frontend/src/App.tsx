@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import Logo from './Logo';
 import { Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import {
@@ -25,6 +26,7 @@ import {
   Sun,
   Target,
   Type,
+  Play,
   Sparkles,
   Shuffle,
   Trophy,
@@ -80,8 +82,8 @@ export default function App() {
     localStorage.getItem('keyrush-theme-v2') === 'light' ? 'light' : 'dark',
   );
   const [palette, setPalette] = useState<ColorPalette>(() => {
-    const savedPalette = localStorage.getItem('keyrush-palette-v2');
-    return colorPalettes.find(({ id }) => id === savedPalette)?.id ?? 'violet';
+    const savedPalette = localStorage.getItem('keyrush-palette-v3');
+    return colorPalettes.find(({ id }) => id === savedPalette)?.id ?? 'ocean';
   });
   const [token, setToken] = useState(() => localStorage.getItem('keyrush-token') ?? '');
   const [user, setUser] = useState<Account | null>(null);
@@ -95,7 +97,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.palette = palette;
-    localStorage.setItem('keyrush-palette-v2', palette);
+    localStorage.setItem('keyrush-palette-v3', palette);
   }, [palette]);
 
   useEffect(() => {
@@ -210,13 +212,13 @@ function AuthPage({ mode, theme, palette, onPaletteChange, onToggleTheme, onAuth
       <aside className="auth-art">
         <div className="auth-art-top">
           <Link className="brand brand-light" to="/" aria-label="KeyRush home">
-            <span className="brand-mark"><Keyboard size={20} strokeWidth={2.2} /></span>
+            <span className="brand-mark"><Logo size={40} /></span>
             <span>keyrush<span className="brand-period">.</span></span>
           </Link>
           <span className="auth-edition">THE DAILY PRACTICE</span>
         </div>
         <div className="auth-art-copy">
-          <div className="art-spark"><Zap size={16} fill="currentColor" /></div>
+          <div className="art-spark"><Logo size={56} /></div>
           <p className="eyebrow">A little faster. Every day.</p>
           <h1>Find your<br />typing <span>flow.</span></h1>
           <p className="art-description">Small, focused sessions. A rhythm that sticks. Your hands know the way.</p>
@@ -241,7 +243,7 @@ function AuthPage({ mode, theme, palette, onPaletteChange, onToggleTheme, onAuth
           </div>
         </div>
         <div className="auth-form-wrap">
-          <div className="auth-mobile-brand"><span className="brand-mark"><Keyboard size={18} /></span> keyrush<span className="brand-period">.</span></div>
+          <div className="auth-mobile-brand"><span className="brand-mark"><Logo size={34} /></span> keyrush<span className="brand-period">.</span></div>
           <p className="auth-kicker">{isSignup ? 'YOUR NEXT CHAPTER' : 'GOOD TO HAVE YOU BACK'}</p>
           <h2>{isSignup ? 'Create your account' : 'Welcome back'}</h2>
           <p className="auth-subtitle">{isSignup ? 'Save your progress and keep your streak going.' : 'Pick up right where your fingers left off.'}</p>
@@ -453,6 +455,16 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
     }).catch(() => setSaveMessage('Result complete. It could not be saved right now.'));
   }, [isComplete, token, lesson.id, currentSentence, isModesPage, typingMode, beginnerPracticeMode, beginnerWordCount, difficulty, timeLimitSeconds, selectedWordCount, quoteLength, includePunctuation, includeNumbers, metrics.wpm, metrics.accuracy, metrics.mistakes, elapsedSeconds, isTimedMode]);
 
+  // Each page owns its own run: leaving Beginner Learning / Typing Modes must not carry typed text,
+  // a running timer or a started countdown over to the other page.
+  const lastPath = useRef(location.pathname);
+  useEffect(() => {
+    if (lastPath.current === location.pathname) return;
+    lastPath.current = location.pathname;
+    resetPractice(selectedId, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
   function resetPractice(nextLessonId = selectedId, shouldFocus = true, closePanel = true) {
     setSelectedId(nextLessonId);
     setInput('');
@@ -521,23 +533,25 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
       <aside className="sidebar">
         <div className="sidebar-top">
           <Link className="brand" to="/" aria-label="KeyRush home">
-            <span className="brand-mark"><Zap size={21} fill="currentColor" strokeWidth={2.2} /></span>
-            <span>keyrush<span className="brand-period">.</span></span>
+            <span className="brand-mark"><Logo size={40} /></span>
+            <span className="brand-text"><span className="brand-name">KeyRush<span className="brand-period">.</span></span><span className="brand-plan">Typing studio</span></span>
           </Link>
-          <span className="sidebar-label">TYPING STUDIO</span>
         </div>
         <nav className="primary-nav" aria-label="Main navigation">
+          <span className="nav-group-label">Learn</span>
           <Link className={`primary-nav-link ${isLearningPage ? 'primary-nav-link-active' : ''}`} to="/" aria-label="Beginner Learning">
-            <BookOpen size={17} /><span>Beginner Learning</span>
+            <BookOpen size={18} /><span>Beginner Learning</span>
           </Link>
           <Link className={`primary-nav-link ${isModesPage ? 'primary-nav-link-active' : ''}`} to="/modes" aria-label="Typing Modes">
-            <Keyboard size={17} /><span>Typing Modes</span>
+            <Keyboard size={18} /><span>Typing Modes</span>
           </Link>
+          <span className="nav-group-label">Compete</span>
           <Link className={`primary-nav-link ${isGameZone ? 'primary-nav-link-active' : ''}`} to="/game-zone" aria-label="Game Zone">
-            <Gamepad2 size={17} /><span>Game Zone</span>
+            <Gamepad2 size={18} /><span>Game Zone</span>
           </Link>
+          <span className="nav-group-label">Insights</span>
           <Link className={`primary-nav-link ${isStatsPage ? 'primary-nav-link-active' : ''}`} to="/stats" aria-label="Total Stats">
-            <BarChart3 size={17} /><span>Total Stats</span>
+            <BarChart3 size={18} /><span>Total Stats</span>
           </Link>
         </nav>
         <div className="sidebar-spacer" />
@@ -545,6 +559,9 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
           <div className="user-block">
             <span className="avatar">{user ? user.name.trim().charAt(0).toUpperCase() : <UserRound size={16} />}</span>
             <div className="user-detail"><strong>{user?.name ?? 'Guest practice'}</strong><span>{user ? 'Account active' : 'Progress stays here'}</span></div>
+            <button className="icon-button sidebar-action" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title="Change appearance">
+              {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+            </button>
             {user ? (
               <button className="icon-button sidebar-action" onClick={onSignOut} aria-label="Sign out" title="Sign out"><LogOut size={16} /></button>
             ) : <Link className="user-sign-in" to="/login" title="Sign in"><ArrowUpRight size={17} /></Link>}
@@ -563,10 +580,18 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
             <span className="lesson-panel-total">{isModesPage ? '03 MODES' : `${completedLessonIds.size} / 25`}</span>
           </div>
           {isLearningPage && <>
+          <div className="path-progress" aria-label={`${completedLessonIds.size} of ${lessons.length} lessons complete`}>
+            <div className="path-progress-bar"><span style={{ width: `${Math.round((completedLessonIds.size / Math.max(lessons.length, 1)) * 100)}%` }} /></div>
+            <small>{Math.round((completedLessonIds.size / Math.max(lessons.length, 1)) * 100)}% complete</small>
+          </div>
           <button className="next-challenge" onClick={beginNextChallenge}>
-            <span className="next-challenge-label">{completedLessonIds.has(nextChallenge.id) ? 'REPLAY FINAL CHALLENGE' : 'UP NEXT'}</span>
-            <span className="next-challenge-title">{String(nextChallenge.number).padStart(2, '0')} · {nextChallenge.title}</span>
-            <span className="next-challenge-action">Continue learning <ArrowRight size={14} /></span>
+            <span className="next-challenge-play"><Play size={16} fill="currentColor" /></span>
+            <span className="next-challenge-body">
+              <span className="next-challenge-label">{completedLessonIds.has(nextChallenge.id) ? 'Replay final challenge' : 'Up next'}</span>
+              <span className="next-challenge-title">{String(nextChallenge.number).padStart(2, '0')} · {nextChallenge.title}</span>
+              <span className="next-challenge-action">Continue learning</span>
+            </span>
+            <ArrowRight size={16} className="next-challenge-arrow" />
           </button>
           <div className="lesson-nav">
             {groups.map((group, groupIndex) => {
@@ -576,8 +601,11 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
               return (
                 <section className={`lesson-group ${isOpen ? 'lesson-group-open' : ''}`} key={group}>
                   <button className="stage-toggle" aria-expanded={isOpen} onClick={() => setOpenStage(isOpen ? '' : group)}>
-                    <span className={`group-dot group-dot-${groupIndex}`} />
-                    <span className="stage-toggle-name"><strong>Stage {groupIndex + 1}</strong><span>{group.replace(/^Stage \d+: /, '')}</span></span>
+                    <span className={`stage-badge ${stageCompleted === stageLessons.length ? 'stage-badge-done' : ''}`}>{stageCompleted === stageLessons.length ? <CheckCircle2 size={15} /> : groupIndex + 1}</span>
+                    <span className="stage-toggle-name">
+                      <span>{group.replace(/^Stage \d+: /, '')}</span>
+                      <span className="stage-mini-bar"><i style={{ width: `${(stageCompleted / Math.max(stageLessons.length, 1)) * 100}%` }} /></span>
+                    </span>
                     <span className="stage-progress-label">{stageCompleted}/{stageLessons.length}</span>
                     <ChevronRight size={14} className="stage-chevron" />
                   </button>
@@ -699,7 +727,11 @@ function PracticeApp({ user, token, onSignOut, theme, palette, onPaletteChange, 
                     if (mode === 'quote') setCurrentSentence(getRandomSentence(quoteLength, currentSentence));
                     resetPractice(selectedId, false, false);
                   }}>
-                    {mode === 'time' ? <Clock3 size={15} /> : mode === 'words' ? <Type size={15} /> : <Quote size={15} />}{mode}
+                    <span className="mode-tab-icon">{mode === 'time' ? <Clock3 size={18} /> : mode === 'words' ? <Type size={18} /> : <Quote size={18} />}</span>
+                    <span className="mode-tab-copy">
+                      <b>{mode}</b>
+                      <small>{mode === 'time' ? 'Race the clock' : mode === 'words' ? 'Fixed word count' : 'Real sentences'}</small>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1090,5 +1122,5 @@ function formatDuration(totalSeconds: number) {
 }
 
 function LoadingScreen() {
-  return <main className="loading-screen"><span className="brand-mark"><Keyboard size={20} /></span><span>Finding your place…</span></main>;
+  return <main className="loading-screen"><span className="brand-mark"><Logo size={40} /></span><span>Finding your place…</span></main>;
 }
